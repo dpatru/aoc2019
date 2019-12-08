@@ -71,14 +71,22 @@ amps instructions (p:phases) input
   = error "muliple outputs"
   where outputs = run 0 instructions [p, input]
 
-
 main = do
   [instructionFile] <- getArgs
   instructionStrings <- readFile instructionFile
   let instructions = fromList . map read $ splitOn "," instructionStrings
-  let thruster phase = amps instructions phase 0
-  let (p, s) = argmaxWithMax thruster $ permutations [0 .. 4]
-  putStrLn $ "Phase " ++ (concat $ map show p) ++ ", thruster signal " ++ show s
+  let feedback :: [Int] -> Int -- reversed phase to last output
+      feedback phase = last output
+        where output = foldr r (0: output) phase
+              r p o = run 0 instructions $ (p:o) -- run computer on input (p:o) 
+              -- output = r $ p_n : r $ p_n-1 $ . . . r $ p0 : 0 : output
+              -- -> run machine on input p_i and the output of the machine i-1. Machine 0 gets as input p_0, 0, and the output of the first machine n. 
+           
+  let (p, s) = argmaxWithMax feedback $ permutations [5 .. 9]
+  --let thruster phase = amps instructions phase 0
+  --let (p, s) = argmaxWithMax thruster $ permutations [0 .. 4]
+  putStrLn $ "Phase " ++ (reverse $ concat $ map show p)
+    ++ ", thruster signal " ++ show s
                           
 
 
