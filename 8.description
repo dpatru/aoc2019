@@ -1,7 +1,7 @@
-Advent of Code[About][Events][Shop][Settings][Log Out]Daniel Patru 15*
-  {:year 2019}[Calendar][AoC++][Sponsors][Leaderboard][Stats]
+Advent of Code[About][Events][Shop][Settings][Log Out]Daniel Patru 16*
+       y(2019)[Calendar][AoC++][Sponsors][Leaderboard][Stats]
 Our sponsors help make Advent of Code possible:
-AuricVault® - Thieves can't steal -- what isn't there! Secure your sensitive data. Simple API. FREE test credentials. Start simplifying your compliance.
+Xandr - Improving advertising for brands and consumers.
 --- Day 8: Space Image Format ---
 The Elves' spirits are lifted when they realize you have an opportunity to reboot one of their Mars rovers, and so they are curious if you would spend a brief sojourn on Mars. You land your ship near the rover.
 
@@ -25,8 +25,6 @@ The image you received is 25 pixels wide and 6 pixels tall.
 To make sure the image wasn't corrupted during transmission, the Elves would like you to find the layer that contains the fewest 0 digits. On that layer, what is the number of 1 digits multiplied by the number of 2 digits?
 
 Your puzzle answer was 1320.
-
-The first half of this puzzle is complete! It provides one gold star: *
 
 --- Part Two ---
 Now you're ready to decode the image. The image is rendered by stacking the layers and aligning the pixels with the same positions in each layer. The digits indicate the color of the corresponding pixel: 0 is black, 1 is white, and 2 is transparent.
@@ -58,9 +56,12 @@ So, the final image looks like this:
 10
 What message is produced after decoding your image?
 
-Although it hasn't changed, you can still get your puzzle input.
+Your puzzle answer was RCYKR.
 
-Answer: 
- 
+Both parts of this puzzle are complete! They provide two gold stars: **
+
+At this point, you should return to your Advent calendar and try another puzzle.
+
+If you still want to see it, you can get your puzzle input.
 
 You can also [Share] this puzzle.
