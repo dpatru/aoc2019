@@ -12,19 +12,6 @@ import Data.Complex (Complex((:+)), polar)
 
 import Data.List (sort, nub)
 
--- gcd :: Int -> Int -> Int -- already part of prelude
--- gcd a b = if x == 0 then abs $ a else gcd x a
---   where x = b `mod` a
-
-reduce :: (Int, Int) -> (Int, Int)
-reduce (a,b) | a == 0 && b == 0 = error "same point"
-             | a == 0 = (0, signum b)
-             | b == 0 = (signum a, 0)
-             | otherwise = (a `div` x, b `div` x)
-  where x = abs $ gcd a b
-
-direction :: (Int, Int) -> (Int, Int) -> (Int, Int)
-direction (a,b) (c,d) = reduce (a-c, b-d)
 
 readMap :: [[Char]] -> [(Int, Int)]
 readMap rows = [(x, y) | (y, row) <- zip [0 ..] rows
