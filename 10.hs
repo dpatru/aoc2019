@@ -10,7 +10,7 @@ import Data.Map.Strict (Map)
 import Data.Tuple (swap)
 import Data.Complex (Complex((:+)), polar)
 
-import Data.List (sort)
+import Data.List (sort, nub)
 
 -- gcd :: Int -> Int -> Int -- already part of prelude
 -- gcd a b = if x == 0 then abs $ a else gcd x a
@@ -26,32 +26,26 @@ reduce (a,b) | a == 0 && b == 0 = error "same point"
 direction :: (Int, Int) -> (Int, Int) -> (Int, Int)
 direction (a,b) (c,d) = reduce (a-c, b-d)
 
-readMap :: [[Char]] -> Set (Int, Int)
-readMap rows = S.fromList $
-  [(x, y) | (y, row) <- zip [0 ..] rows
-          , (x, c) <- zip [0 ..] row
-          , c == '#']
+readMap :: [[Char]] -> [(Int, Int)]
+readMap rows = [(x, y) | (y, row) <- zip [0 ..] rows
+                       , (x, c) <- zip [0 ..] row
+                       , c == '#']
 
-analyzeMap :: Set (Int, Int) -> (Int, (Int, Int))
-analyzeMap points = maximum $ map swap $ M.toList  $ M.map S.size $ S.foldr' insertPt M.empty points
-  where insertPt :: (Int, Int) -> Map (Int, Int) (Set(Int, Int)) -> Map (Int, Int) (Set(Int, Int))
-        insertPt p m = M.insert p (analyzePoint p) m
-        analyzePoint :: (Int, Int) -> Set(Int,Int)
-        analyzePoint p = -- trace (show p) $
-          S.foldr' test S.empty points
-          where test p2 m | p == p2 = m
-                          | d `S.member` m = m
-                          | otherwise = S.insert d m
-                  where d = direction p p2
-
+analyzeMap :: [(Int, Int)] -> (Int, (Int, Int))
+analyzeMap points = maximum [(length $ nub angles, p)
+                            | p <- points
+                            , let angles = map (fst . polarDirection p) points]
+                                                 
 polarDirection :: (Int, Int) -> (Int, Int) -> (Float, Float)
 polarDirection origin@(x0,y0) pt@(x1,y1) = -- (angle_from_vertical, distance)
   swap -- angle first
-  $ positiveAngle
+  $ positiveAngle -- polar's angle is from -pi to pi, convert to 0 to 2pi so that we can sort by angle
   $ polar -- convert to (magnitude, phase)
-  $ fromIntegral (-1 * y) :+ fromIntegral x -- make complex normally the positive x axis is phase 0,
-           -- but here we want to go clockwise from vertical, so swap
-           -- x and y
+  $ fromIntegral (-1 * y) :+ fromIntegral x -- make complex, normally
+           -- the positive x axis is phase 0, but here we want to go
+           -- clockwise from vertical, so swap x and y and change y's
+           -- sign to correct for the fact that the coordinates
+           -- increase in the down direction.
   where (x, y) = (x1-x0,y1-y0) -- point from perspective of origin
         positiveAngle (m,p) | p < 0 = (m, 2 * pi + p)
                             | otherwise = (m, p)
@@ -73,10 +67,10 @@ main = do
         -- $ traceShowId
         $ sort -- [((angle, distance), xy)] in order
         $ map (\(x,y) -> (polarDirection station (x,y),100*x+y))
-        $ S.toList
-        $ S.delete station points
+        $ filter (/= station) points
         
   putStrLn $ "Part 2: " ++ show (polarPoints!!199)
+  --putStrLn $ "Part 2: " ++ (show $ head $ drop 199 polarPoints)
   
 
 
