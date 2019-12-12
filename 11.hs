@@ -14,8 +14,10 @@ import Data.List (permutations)
 import Data.List.Split (splitOn)
 import Data.Complex (Complex((:+)), realPart, imagPart)
 
-run :: (Integer, Integer) -> Map Integer Integer -> [Integer] -> [Integer]-- (instructionPointer, base), instructions, input, output
--- run i instructions inputs = unlines inputs
+type Instructions = Map Integer Integer
+
+run :: (Integer, Integer) -> Instructions -> [Integer] -> [Integer]
+-- (instructionPointer, base), instructions, input, output
 run (i, base) instructions inputs =
   -- trace ((show $ toList instructions) ++ ": (ip, base, instr, inputs) " ++ show (i, base, instr, inputs) ++ "\n") $
   case instr `mod` 100 of
@@ -49,10 +51,8 @@ instance Ord a => Ord (Complex a) where
   compare a b | ar < br || ar == br && ai < bi = LT
               | ar > br || ar == br && ai > bi = GT
               | otherwise = EQ
-    where ar = realPart a
-          ai = imagPart a
-          br = realPart b
-          bi = imagPart b
+    where (ar, ai) = toParts a
+          (br, bi) = toParts b
 
 toParts :: Complex a -> (a, a)
 toParts c = (realPart c, imagPart c)
@@ -63,6 +63,7 @@ toIntParts c = (round $ realPart c, round $ imagPart c)
 fromParts :: (a, a) -> Complex a
 fromParts (a,b) = a :+ b
 
+
 process :: (Complex Float, Complex Float, Map (Complex Float) Integer) -> [Integer] -> [Integer]
 process (p, d, colors) [] =
   traceShow (size colors) $
@@ -72,8 +73,8 @@ process (p, d, colors) (c: t: futureOutputs) =
   -- traceShow ("xy", toIntParts p,"out", out,robot d, "paint", c,"turn", t) $ 
   -- trace (showColors p d colors) $
   out: process (p', d', insert p c colors) futureOutputs
-  where p' = p + d'
-        d' = d * (0 :+ (1.0 - fromIntegral t * 2))
+  where p' = p + d' -- next position
+        d' = d * (0 :+ (1.0 - fromIntegral t * 2)) -- next direction
         out = findWithDefault 0 p' colors
 
 showProcess :: [Integer] -> (Complex Float, Complex Float, Map (Complex Float) Integer) -> (Complex Float, Complex Float, Map (Complex Float) Integer)
@@ -94,14 +95,8 @@ showColors p d cs
         pts = map fst $ toList cs
         xs = map (round . realPart) $ p: pts
         ys = map (round . imagPart) $ p: pts
-        x0 :: Int
-        x0 = minimum xs
-        y0 :: Int
-        y0 = minimum ys
-        x1 :: Int
-        x1 = maximum xs
-        y1 :: Int
-        y1 = maximum ys
+        x0, y0, x1, y1 :: Int
+        [x0, y0, x1, y1] = [minimum xs, minimum ys, maximum xs, maximum ys]
         v :: Complex Float -> Integer -> Char
         v p' c | p == p' = robot d
                | p' == (0.0 :+ 0.0) && c== 0 = 'o'
@@ -134,10 +129,10 @@ main = do
   putStrLn "Part 2"
   let output = run (0,0) instructions $ (startColors2!(0 :+ 0)): process ((0 :+ 0),(0 :+ 1), startColors2) output
   let (finalp, finald, colors) = showProcess output ((0 :+ 0), (0 :+ 1), startColors2)
-  putStrLn $ "done\n"
+  putStrLn $ "done Part 2\n"
     -- ++ (unlines $ map show output)
-    ++ (show $ length output)
-    ++ show (finalp, finald) ++ "\n" ++ showColors finalp finald colors
+    ++ (show $ ("outputs: ", length output, "final position: ", toIntParts finalp, "final direction: ", robot finald))
+    ++ "\n" ++ showColors finalp finald colors
 
 
 
