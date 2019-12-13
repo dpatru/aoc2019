@@ -19,13 +19,16 @@ energy [(xs, vxs), (ys, vys), (zs, vzs)] = sum [p * k | (p,k) <- zip potential k
 
 -- Use a Map to store previous states, because we aren't guaranteed
 -- that the state will return to the initial state.
-findRepeat :: Integer -> Pair -> Map Pair Integer -> (Integer, Integer)
-findRepeat i p m
-  | p `member` m = (m!p, i)
-  | otherwise =  findRepeat (i+1) (step1 p) (insert p i m)
+findRepeat :: Integer -> Map Pair Integer -> Pair -> Integer
+findRepeat i m p  
+  | p `member` m = i - m!p
+  | otherwise =  findRepeat (i+1) (insert p i m) (step1 p)
+
+combineCycles cs = foldl (\x y -> x * y `div` gcd x y) 1 cs
 
 main = do
-  ls <- getContents
+  ls <- getContents -- input should be space-separated x y z coords,
+                    -- one line per moon
   let [xs, ys, zs] = transpose $ map (map read . words) $ lines ls
   let [vxs, vys, vzs] = map (map (const 0)) [xs, ys, zs]
   let pairs = [(xs, vxs), (ys, vys), (zs, vzs)]
@@ -43,18 +46,5 @@ main = do
   -- the greatest common divisor. (To see why, consider c1 = i * g,
   -- and c2 = j * g, then c1 * c2 = i * j * g * g. Notice that g (gcd)
   -- appears twice in the product but is only needed once.)
-  let (i1, j1) = findRepeat 0 (xs, vxs) empty
-  putStrLn $ show (i1, j1)
-  let x = j1 - i1 -- in case the cycle doesn't begin at 0, take the difference
-  let (i2, j2) = findRepeat 0 (ys, vys) empty
-  let y = j2 - i2
-  putStrLn $ show (i2, j2)
-  let gcd1 = gcd x y
-  putStrLn $ show ("gcd1", gcd1)
-  let (i3, j3) = findRepeat 0 (zs, vzs) empty
-  let z = j3 - i3
-  putStrLn $ show (i3, j3)
-  let p1 = (x * y) `div` gcd1
-  let gcd2 = gcd p1 z
-  putStrLn $ show ("gcd2", gcd2)
-  putStrLn $ show ("product", (p1 * z) `div` gcd2)
+
+  putStrLn $ show $ combineCycles $ map (findRepeat 0 empty) pairs
