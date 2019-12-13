@@ -24,6 +24,11 @@ findRepeat i m p
   | p `member` m = i - m!p
   | otherwise =  findRepeat (i+1) (insert p i m) (step1 p)
 
+-- Try to match the initial state only
+findRepeat2 :: Pair -> Integer
+findRepeat2 p0  = f 1 $ step1 p0
+  where f i p = if p == p0 then i else f (i+1) (step1 p)
+
 combineCycles cs = foldl (\x y -> x * y `div` gcd x y) 1 cs
 
 main = do
@@ -48,3 +53,4 @@ main = do
   -- appears twice in the product but is only needed once.)
 
   putStrLn $ show $ combineCycles $ map (findRepeat 0 empty) pairs
+  putStrLn $ show $ combineCycles $ map findRepeat2 pairs
