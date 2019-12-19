@@ -20,6 +20,9 @@ to10plus (x:xs)
   -- causes a runtime error below. See
   -- https://stackoverflow.com/questions/59297557/when-can-i-rely-on-haskell-to-read-a-list-lazily/59298311#59298311.
 
+getStuff :: IO String
+getStuff = getLine
+
 main = do
   let out = plus1 $ 1: to10 out
   putStrLn $ show out
@@ -31,3 +34,6 @@ main = do
   let out = plus1 $ 1: out2
       (out2, count) = to10plus out
   putStrLn $ show (out, count)
+
+  let l = getStuff
+  l >>= putStrLn
