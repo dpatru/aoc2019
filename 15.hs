@@ -103,19 +103,19 @@ data Game = Game
   , maxy :: Integer
   } deriving (Show)
 
-game0 = Game { m = empty, x = 0, y = 0 }
+game0 = Game { m = empty, x = 0, y = 0, minx = 0, maxx = 0, miny = 0, maxy = 0 }
 
 updateGame :: Game -> Integer -> Integer -> Game
 updateGame g move status = updateMaxes $ case status of
-  0 -> g { m = insert (x',y') 0 $ g m }
-  1 -> g { m = insert (x',y') 1 $ g m, x = x', y = y'}
-  2 -> g { m = insert (x',y') 2 $ g m, x = x', y = y'}
-  where x' | move == 3 = g x - 1
-           | move == 4 = g x + 1
-           | otherwise = g x
-        y' | move == 1 = g y + 1
-           | move == 2 = g y - 1
-           | otherwise = g y
+  0 -> g { m = insert (x',y') 0 $ m g }
+  1 -> g { m = insert (x',y') 1 $ m g, x = x', y = y'}
+  2 -> g { m = insert (x',y') 2 $ m g, x = x', y = y'}
+  where x' | move == 3 = x g - 1
+           | move == 4 = x g + 1
+           | otherwise = x g
+        y' | move == 1 = y g + 1
+           | move == 2 = y g - 1
+           | otherwise = y g
         updateMaxes g = g
           { maxx = max x' $ maxx g
           , maxy = max y' $ maxy g
@@ -125,20 +125,21 @@ updateGame g move status = updateMaxes $ case status of
 
 topMargin = 5
 
-drawGame Window -> Game => Curses()
-drawGame w g = updateWindow w $ do
-  sequence_ [ draw i j val
-            | i <- [minx g .. maxx g]
-            , j <- [miny g .. maxy g]
-            , let val = findWithDefault -1 (i,j) $ m g
-            ]
+drawGame :: Window -> Game -> Curses()
+drawGame w g = do
+  updateWindow w $ do
+    sequence_ [ draw i j val
+              | i <- [minx g .. maxx g]
+              , j <- [miny g .. maxy g]
+              , let val = findWithDefault 5 (i,j) $ m g
+              ]
   render
     where draw i j val = do
             moveCursor (j + topMargin) i
             if (i,j) == (x g, y g)
               then drawString "D"
               else drawString $ case val of
-                                  -1 -> " "
+                                  5 -> " "
                                   0 -> "#"
                                   1 -> "."
                                   2 -> "*"
@@ -152,7 +153,7 @@ play game c = runCurses $ do
     where loop :: Window -> Game -> Computer -> Curses(Game)
           loop w g c
             | state c == Done = do
-                processDrawCommands w g' $ output c
+                drawGame w g
                 updateWindow w $ do
                   moveCursor 0 10
                   drawString "Press q to quit"
@@ -161,8 +162,8 @@ play game c = runCurses $ do
                       ev <- getEvent w Nothing
                       case ev of
                         Nothing -> qloop
-                        Just (EventCharacter 'q') -> return g'
-                        Just (EventCharacter 'Q') -> return g'
+                        Just (EventCharacter 'q') -> return g
+                        Just (EventCharacter 'Q') -> return g
                         _ -> qloop
                 qloop
             | state c == Blocked = do -- waiting for input
@@ -180,8 +181,8 @@ play game c = runCurses $ do
                         Just (EventSpecialKey KeyRightArrow) -> return 4
                         _ -> moveLoop
                 move <- moveLoop
-                c' <- run $ c {input = [move]}
-                loop w (updateGame g (output c') $ c' {output=[]}
+                let c' = run $ c {input = [move], output = []}
+                loop w (updateGame g move $ head $ output c') $ c'{ input = [], output = [] }
             | otherwise = loop w game $ run c
 
 
@@ -191,49 +192,4 @@ main = do
   let instructions = fromList . zip [0 ..] $ map read $ splitOn "," instructionStrings
 
   putStrLn "Part 1"
-  let c = run $ computer0 {memory = instructions}
-  -- putStrLn $ show ("state", state c, "drawCommands", output c)
-  let game = updateGame game0 $ output c
-  putStrLn $ show $ size $ M.filter (== 2) $ m game
-  putStrLn "Part 1b"
-  display $ output c
-  putStrLn "Part 2"
-  let instructions2 = insert 0 2 instructions -- play for free by setting memory address 0 to 2
-  game <- play game0 $ computer0 {memory = instructions2}
-  putStrLn $ show $ head $ p game
-  -- let moves = moves >>= (play . run (0,0) instructions2)
-  -- -- moves <- play $ run (0,0) instructions2 $ repeat 0
-  -- moves' <- moves
-  -- putStrLn $ show $ length moves'
-  
-  -- let moves = moves >>= (play . run (0,0) instructions2)
-  -- moves' <- moves
-  -- putStrLn $ show moves'
-  -- moves' <- play $ run (0,0) instructions2 []
-  -- putStrLn $ show ("moves", moves')
-  -- let moves = run (0,0) instructions2 $ repeat 0
-  -- putStrLn $ show ("moves", moves)
-  -- display moves
-  
-  
-  -- let out = run (0,0) instructions $ (startColors!origin) : processOutput
-  --     (processOutput, finalp, finald, colors) = process (origin,up, startColors) $ out
-  -- putStrLn
-  --   $ unlines
-  --   $ ["done Part 1"
-  --     , show $ ("tiles painted: ", size colors)
-  --     , show $ ("finalp", finalp, "finald", robot finald)
-  --     ]
-  -- putStr $ showColors finalp finald colors
-
-  -- putStrLn "Part 2"
-  -- let out = run (0,0) instructions $ (startColors2!origin) : processOutput
-  --     (processOutput, finalp, finald, colors) = process (origin,up, startColors2) $ out
-  -- putStrLn
-  --   $ unlines
-  --   $ ["done Part 2"
-  --     , show $ ("tiles painted: ", size colors)
-  --     , show $ ("finalp", finalp, "finald", robot finald)
-  --     ]
-  -- putStr $ showColors finalp finald colors
-
+  play game0 (computer0{memory = instructions})
