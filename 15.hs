@@ -5,6 +5,8 @@ import System.Environment (getArgs)
 import System.IO (readFile)
 import Data.Map.Strict (Map, (!), insert, elems, fromList, toList, findWithDefault, size, empty, member, findMin, findMax, singleton, filter)
 import qualified Data.Map.Strict as M
+import Data.Set (Set)
+import qualified Data.Set as S
 --import qualified Data.Array as A
 import Data.List (permutations)
 import Data.List.Split (splitOn)
@@ -101,11 +103,12 @@ data Game = Game
   , miny :: Integer
   , maxx :: Integer
   , maxy :: Integer
+  , explore :: [Int] -- stack of directions to explore
   } deriving (Show)
 
-game0 = Game { m = empty, x = 0, y = 0, minx = 0, maxx = 0, miny = 0, maxy = 0 }
+game0 = Game { m = empty, x = 0, y = 0, minx = 0, maxx = 0, miny = 0, maxy = 0, explore = [] }
 
-updateGame :: Game -> Integer -> Integer -> Game
+updateGame :: Game -> Int -> Integer -> Game
 updateGame g move status = updateMaxes $ case status of
   0 -> g { m = insert (x',y') 0 $ m g }
   1 -> g { m = insert (x',y') 1 $ m g, x = x', y = y'}
@@ -128,6 +131,10 @@ topMargin = 5
 drawGame :: Window -> Game -> Curses()
 drawGame w g = do
   updateWindow w $ do
+    clear
+    (width, height) <- windowSize
+    let (width', height') = (maxx g - minx g, maxy g - miny g)
+    resizeWindow (max width width') (max height height')
     sequence_ [ draw i j val
               | i <- [minx g .. maxx g]
               , j <- [miny g .. maxy g]
@@ -135,7 +142,10 @@ drawGame w g = do
               ]
   render
     where draw i j val = do
-            moveCursor (j + topMargin) i
+            let (y',x') =(maxy g - j + topMargin, i - minx g)
+            if x' < 0 then error $ "x < 0: " ++ show x'
+              else if y' < 0 then error $ "y < 0: " ++ show y'
+                   else moveCursor y' x'
             if (i,j) == (x g, y g)
               then drawString "D"
               else drawString $ case val of
@@ -144,6 +154,31 @@ drawGame w g = do
                                   1 -> "."
                                   2 -> "*"
                                   _ -> error $  "unknown map value: " ++ show val
+
+suggestMove :: Game -> Int
+suggestMove g = search candidates seen
+  where seen :: Set (Integer, Integer)
+        seen = S.fromList [(x g, y g)]
+        candidates :: Set (Int, Int, Integer, Integer) -- steps, direction, x, y
+        candidates = S.fromList [ (1, 1, x g, y g + 1)
+                                , (1, 2, x g, y g - 1)
+                                , (1, 3, x g - 1, y g)
+                                , (1, 4, x g + 1, y g)
+                                ]
+        search :: Set (Int, Int, Integer, Integer) -> Set (Integer, Integer) -> Int
+        search candidates seen
+          | S.null candidates = 5 -- error "explored all"
+          | otherwise = let ((steps, direction, x', y'), candidates') = S.deleteFindMin candidates in
+              if (x', y') `S.member` seen then search candidates' seen
+              else
+                let seen' :: Set (Integer, Integer)
+                    seen' = S.insert (x',y') seen
+                    candidates'' =
+                      foldr S.insert candidates' [(steps+1, direction, x'+i, y'+j)| (i,j) <- [(-1,0),(0,-1),(1,0),(0,1)]]
+                in case M.lookup (x',y') (m g) of
+                     Nothing -> direction -- not explored at all
+                     Just 0 -> search candidates' seen' -- wall
+                     _ -> search candidates'' seen'
 
 play :: Game -> Computer -> IO (Game)
 play game c = runCurses $ do
@@ -172,24 +207,59 @@ play game c = runCurses $ do
                   moveCursor 0 10
                   drawString "Move"
                 render
-                let moveLoop = do
-                      moveEvent <- getEvent w Nothing
+                let moveLoop delay = do
+                      moveEvent <- getEvent w  $ delay
                       case moveEvent of
                         Just (EventSpecialKey KeyUpArrow) -> return 1
                         Just (EventSpecialKey KeyDownArrow) -> return 2
                         Just (EventSpecialKey KeyLeftArrow) -> return 3
                         Just (EventSpecialKey KeyRightArrow) -> return 4
-                        _ -> moveLoop
-                move <- moveLoop
-                let c' = run $ c {input = [move], output = []}
-                loop w (updateGame g move $ head $ output c') $ c'{ input = [], output = [] }
+                        Nothing -> return $ suggestMove g
+                        _ -> moveLoop delay
+                move <- moveLoop $ Just 0
+                if move == 5
+                  then loop w g $ c{state = Done}
+                  else let c' = run $ c {input = [fromIntegral move], output = []} in 
+                         loop w (updateGame g move $ head $ output c') $ c'{ input = [], output = [] }
+
             | otherwise = loop w game $ run c
 
+type Point = (Integer,Integer)
+type SearchState = (Int, Point)
 
 main = do
   [instructionFile] <- getArgs
   instructionStrings <- readFile instructionFile
   let instructions = fromList . zip [0 ..] $ map read $ splitOn "," instructionStrings
-
   putStrLn "Part 1"
-  play game0 (computer0{memory = instructions})
+  game <- play game0 (computer0{memory = instructions})
+  let search :: Set SearchState -> Set Point ->  SearchState
+      search stateHeap seen
+        | (m game)!(i,j) == 2 = (steps, (i,j)) -- found the goal, return the number of steps needed to reach it.
+        | (m game)!(i,j) == 0 = search stateHeap' seen' -- testing a wall, don't add to the frontier
+        | otherwise = search stateHeap'' seen' -- testing a clear spot, expand the frontier and keep searching
+        where ((steps, (i,j)), stateHeap') = S.deleteFindMin stateHeap
+              stateHeap'' = foldr S.insert stateHeap' $ frontier
+              frontier = [(steps+1, pt)
+                         | pt <- [(i+1,j), (i-1,j), (i,j+1), (i,j-1)]
+                         , not $ pt `S.member` seen']
+              seen' = S.insert (i,j) seen
+  let (steps, oxygenOrigin) = search (S.singleton (0, (0,0))) S.empty
+  putStrLn $ show $ (steps, oxygenOrigin)
+  putStrLn "Part 2"
+  let spread :: Set SearchState -> Set Point -> SearchState
+      spread stateHeap seen
+        | null stateHeap = (0, (0,0)) -- base case
+        | otherwise = max (steps, (i,j)) $ spread stateHeap'' seen' -- testing a clear spot, expand the frontier and keep searching
+        where ((steps, (i,j)), stateHeap') = -- traceShow stateHeap $
+                S.deleteFindMin stateHeap
+              stateHeap'' = foldr S.insert stateHeap' $ frontier
+              frontier = [(steps+1, pt)
+                         | pt <- [(i+1,j), (i-1,j), (i,j+1), (i,j-1)]
+                         , not $ pt `S.member` seen'
+                         , not $ (m game)!pt == 0 ]
+              seen' = S.insert (i,j) seen
+  let (steps, lastSpot) = spread (S.singleton (0, oxygenOrigin)) S.empty
+  putStrLn $ show $ (steps, lastSpot)
+      
+  
