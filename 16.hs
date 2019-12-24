@@ -14,7 +14,10 @@ dotp :: [Int] ->  [Int] -> Int
 dotp xs ys = sum $ zipWith (*) xs ys
 
 onesDigit :: Int -> Int
-onesDigit x = (abs x) `rem` 10
+onesDigit x = (abs x) `mod` 10 -- mod returns the remainder from the
+                               -- previous number, we want the
+                               -- remainder from zero. So take the abs
+                               -- before applying mod.
 
 fft1 :: [Int] -> [Int]
 fft1 xs = [onesDigit $ dotp xs $ pattern i | i <- [1 .. (length xs)]]
@@ -70,67 +73,3 @@ main = do
       fftend = iterate fftend1
   print $ map intToDigit $ take 8 $ (fftend $ drop offset input2)!!100
 
-  
-  
--- pattern :: Int -> [Int]
--- pattern n = [i | i <- base, j <- [0 .. n]] ++ pattern n
-
--- mysum :: [Int] -> Int
--- mysum xs = foldl (+) 0 xs
-
--- dot :: [Int] -> [Int] -> Int
--- dot xs ys = (abs (mysum [x * y | (x,y) <- zip xs ys])) `mod` 10
--- -- dot xs ys = (abs $ sum zs) `mod` 10
--- --  where zs = -- traceShowId $
--- --          [x * y | (x,y) <- zip xs ys]
-
--- applyN :: Int -> (a->a) -> a -> a
--- applyN 0 _ x = x
--- applyN n f x = applyN (n-1) f $! traceShow n $! f x
-
--- phase :: [Int] -> [Int]
--- phase input = trace "Phase" $! [drop i input `dot` drop i (drop 1 $ pattern i) | i <- take n [0 .. ]]
---   where n = length input
-
--- phases :: Int -> [Int] -> [Int]
--- phases n input = trace "Done with phases" $! applyN n phase input
-
--- readInts :: String -> [Int]
--- readInts s = [read [c] | c <- s, '0' <= c, '9' >= c]
-
--- repeatN :: Int -> [a] -> [a]
--- repeatN n xs = concat $! [xs | i <- [1 .. n]]
--- -- repeatN 0 _ = []
--- -- repeatN n xs = xs ++ repeatN (n-1) xs
-
--- main = do
---   -- putStrLn $ show $ take 20 $ pattern 0
---   -- putStrLn $ show $ take 20 $ pattern 1
---   -- putStrLn $ show $ take 20 $ pattern 2
---   -- putStrLn $ show $ take 20 $ pattern 3
---   -- let input = map (\c -> read [c])  "12345678"
---   -- putStrLn $ show $ input
---   -- putStrLn $ show $ input `dot` (drop 1 $ pattern 0)
---   -- putStrLn $ show $ phase input
---   -- putStrLn $ show $ phases 1 input
---   -- putStrLn $ show $ phases 2 input
---   -- putStrLn $ show $ phases 3 input
---   -- putStrLn $ show $ phases 4 input
---   [inputFile] <- getArgs
---   inputString <- readFile inputFile
---   let input = readInts inputString
---   putStrLn "Part 1"
---   putStrLn $ concat $ map show $ take 8 $ phases 100 input
---   putStrLn "Part 2"
---   let input2 = repeatN 10000 input
---   putStrLn $ "input length: " ++ (show $ length input)
---   putStrLn $! "input2 length: " ++ (show $ length input2)
---   let offset :: Int
---       offset = read $! take 7 inputString
---   putStrLn $! "offset: " ++ (show offset)
-      
---   let input2' = drop offset input2
---   putStrLn $! "input2' length: " ++ (show $! length input2')
---   let result = phases 100 $! input2'
---   let message = concat $! map show $! take 8 result
---   putStrLn message
