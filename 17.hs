@@ -10,7 +10,7 @@ import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
 --import qualified Data.Array as A
-import Data.List (find, intercalate, permutations)
+import Data.List (find, intercalate, intersperse, permutations, inits, tails, isPrefixOf)
 import Data.List.Split (splitOn)
 -- import Data.Complex (Complex((:+)), realPart, imagPart) -- define my own complex
 
@@ -115,7 +115,7 @@ type Point = Complex Int
 type Direction = Complex Int
 type Scaffold = Set Point
 data Move = R | L | F Int | Err
-  deriving (Show)
+  deriving (Show, Eq)
 
 show' :: [Move] -> String
 show' ms = intercalate "," $ map showMove ms
@@ -194,14 +194,14 @@ main = do
   -- let cs = substitute p
   -- print cs
   -- print $ length cs
-  -- let ls = map (fromIntegral . ord) $ unlines
-  --       [ "A,A,B,C,C,A,B,C,A,B"
-  --       , "L,12,L,12,R,12"
-  --       , "L,8,L,8,R,12,L,8,L,8"
-  --       , "L,10,R,8,R,12"
-  --       , "n"
-  --       ]
-  -- print ls
+  let ls = map (fromIntegral . ord) $ unlines
+        [ "A,A,B,C,C,A,B,C,A,B"
+        , "L,12,L,12,R,12"
+        , "L,8,L,8,R,12,L,8,L,8"
+        , "L,10,R,8,R,12"
+        , "n"
+        ]
+  print ls
   -- let c = run $ computer0 { memory = insert 0 2 instructions
   --                         , input = ls }
 
@@ -210,13 +210,39 @@ main = do
   print "Part 2 - alt"
   print p
   print $ length p
-  let substrings xs = [(i, j, k) | (i, taili) <- zip (inits xs) (tails xs)
-                                 , (j, tailj) <- zip (inits taili) (tails taili)
-                                 , k
-  print $ length $ subsequences p
-  -- let candidates = map (take 3) $ permutations $ Prelude.filter ((< 21) . length . show') $ subsequences p
-  -- print $ length candidates
+  let substrings xs = concatMap inits $ tails xs
+  let functions = Prelude.filter (\l -> length l > 1 && (length $ show' l) < 21) $ substrings p
+  print $ length $ functions
+  -- let functions3 = [(a,b,c) | a <- functions, b <- functions, show' a < show' b, c <- functions, show' b < show' c]
+  let f xs ys = show' xs < show' ys
+  let functions3 = [[a,b,c] | a <- inits $ take 10 p, length a > 0, c <- functions, b <- Prelude.filter (f c) functions]
+  print $ length $ functions3
+
+  -- print $ Prelude.filter (\[a,b,c] -> (length $ show' a) == 14 && (length $ show' b) == 13 && (length $ show' c) == 20) functions3
+  let test3 [] fs = True
+      test3 pth fs = any id [test3 (drop (length f) pth) fs | f <- fs, isPrefixOf f pth]
+  let goodFunctions = Prelude.filter (test3 p) $ functions3
+  let goodFunction = head $ goodFunctions
+  print $ goodFunction
+  let programs [] fs = [[]]
+      programs pth fs = [ (l: ls) | (l, f) <- zip ['A' .. 'C'] fs
+                                  , f `isPrefixOf` pth
+                                  , ls <- programs (drop (length f) pth) fs
+                                  ]
+  let program = intersperse ',' $ head $ programs p goodFunction
+  let functions = map show' goodFunction
+  print program
+  print functions
+  let ls = unlines ((program: functions) ++ ["n"])
+  print ls
+  print $ map (fromIntegral . ord) ls
+  let c = run $ computer0 { memory = insert 0 2 instructions
+                          , input = map (fromIntegral . ord) ls }
+
+  print $ last $ output c
+  print $ map (chr . fromIntegral) $ init $ output c
   
+
 -- After first run:
 -- [A,B 4,
 --  A,B 4,
