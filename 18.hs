@@ -144,7 +144,8 @@ mazeToGraph m = foldl addPt M.empty $ toList g
 openDoor :: MazeGraph -> Char -> MazeGraph -- aka removeVertex
 openDoor g d | d `M.member` g = --traceShow ("open door", d) $ traceShow g $ traceShow g' $ traceShowId $
                M.mapWithKey merge g'
-             | otherwise = error $ show ("no such door", d, g)
+             | otherwise = trace ("openDoor: door "++ show d ++ "not in graph ") $
+               g -- error $ show ("no such door", d, g)
   where
     paths = --traceShowId $
       g!d
@@ -158,60 +159,161 @@ openDoor g d | d `M.member` g = --traceShow ("open door", d) $ traceShow g $ tra
                                      , n /= d]
             doorCost =  nbrs!d
             
-keysReachable :: MazeGraph -> Char -> [(Char, Cost)]
-keysReachable g pt
-  | pt  `M.member` g
-  = --traceShow ("keysReachable", g, pt) $ traceShowId $
-    [(nbr, cost) | (nbr, cost) <- M.toList $ g!pt
-                 , isLower nbr]
-  | otherwise = error "bad pt"
+-- keysReachable :: MazeGraph -> Char -> [(Char, Cost)]
+-- keysReachable g pt
+--   | pt  `M.member` g
+--   = --traceShow ("keysReachable", g, pt) $ traceShowId $
+--     [(nbr, cost) | (nbr, cost) <- M.toList $ g!pt
+--                  , isLower nbr]
+--   | otherwise = error "bad pt"
 
-findShortestPath :: MazeGraph -> Set (Cost, [String]) -> (Cost, [Char])
-findShortestPath g heap = search (M.singleton "" g) S.empty $ heap
-  where search :: Map [Char] MazeGraph -> Set [Char] -> Set (Cost, [Char]) -> (Cost, [Char])
+isCapitalized s = isUpper $ head s
+isLowered s = isLower $ head s
+capitalize s = (toUpper $ head s): tail s
+
+findShortestPath :: (String -> Bool) -> MazeGraph -> Set (Cost, String) -> (Cost, [Char])
+findShortestPath isDone g heap = search (M.singleton "" g) S.empty $ heap
+  -- 'search graphs isDone seen heap' removes the best state (state with
+  -- lowest cost) from the heap and checks if we're done. If we're
+  -- not, then it inserts the next states on the heap and recurses.
+
+  -- graphs is a dictionary which holds graphs with various states
+  -- removed. graphs!"abc" is the graph with states a, b, and c
+  -- removed. Note that "abc" is sorted.
+
+  -- The heap stores states in the tuple (363, "abc1 xyz2 uv3 4")
+  -- where the first element is the cost and the send is the paths
+  -- concatenated with a space. The initial state is (0, "1 2 3 4")
+
+  -- I use the convention of adding a tick to denote the next
+  -- variable, so gs' is the next gs.
+  where search ::  Map [Char] MazeGraph -> Set [Char] -> Set (Cost, String) -> (Cost, [Char])
         search gs seen heap
           | null heap = error "null heap" -- should never have an empty heap
-          | null g'' = best -- collected all the keys, return
-          | (location:keysSoFar) `S.member` seen = search gs seen heap' -- we've been here before, skip
-          | otherwise = -- traceShow ("continuing fsp, heap ", heap'') $
+          | isDone pathsString
+          = traceShow "Done" $
+            best -- collected all the keys, return
+          | pathsString `S.member` seen
+          = traceShow ("Search seen: ", cost, pathsString, "new heapsize", S.size heap') $
+            search gs seen heap' -- we've already seen this state
+          | otherwise
+          = traceShow ("Search running: ", cost, best, pathsString, "new heapsize", S.size heap'') $
+            -- traceShow ("new heap", S.toList heap'' ) $
             search gs' seen' heap''
-          where (best@(cost, path), heap') = -- traceShow ("pulling from heap: gs = ", gs)  $ traceShowId $
-                  S.deleteFindMin heap
-                keysSoFar = sort $ tail path -- keys so far is the path up to the last node, in sorted (connonical) form
-                keysSoFar' = sort path
-                location = head path
-                seen' = (location: keysSoFar) `S.insert` seen
-                g' = gs ! keysSoFar
-                g'' = gs' ! keysSoFar' -- graph with whole path removed
-                gpartial | isLower location && toUpper location `member` g' = openDoor g' $ toUpper location
-                         | otherwise = g'
-                gs' | keysSoFar' `member` gs = gs
-                    | isLower location = M.insert keysSoFar' (openDoor gpartial $ location)  gs
-                    | otherwise = M.insert keysSoFar' (openDoor g' location) gs
-                gs''| isLower location = M.insert keysSoFar' (openDoor g' $ toUpper location) gs
-                heap'' :: Set (Cost, [Char])
-                heap'' = foldl (\h (nbr, nbrcost)-> S.insert (nbrcost+cost, nbr:path) h) heap' $ keysReachable gpartial location
+          where
+            (best@(cost, pathsString), heap') = S.deleteFindMin heap
+            seen' = pathsString `S.insert` seen
+            paths = [ p | p <- words pathsString, not $ null p ]
+            currentState = sort $ concat $ map capitalize paths
+            rootPath = trace "rootPath" $ traceShow best $ traceShowId $ concatMap tail paths
+            pathHeads = map head paths
+            g0 | rootPath `M.member` gs = gs!rootPath
+               | otherwise = error $ "bad rootpath (" ++ rootPath ++") for state "++ show best++"\nKeys are: " ++ (show $ M.keys gs)
+
+            -- g' is the current graph, with doors open, but the keys
+            -- still in to allow calculating neighbors.
+            g' = foldl openDoor g0 [toUpper h | h <- pathHeads, isLower h]
+
+            -- nextgs is a list of the next graphs, once any path is
+            -- lengthened. When a path is lengthened, the old pathhead
+            -- is removed from the graph. It's only needed so that
+            -- neighbors can be calculated. After that, it just slows
+            -- up the search.
+            nextgs = [(sort $ h:rootPath, openDoor g' h)
+                     | h <- pathHeads]
+            gs' = foldr (uncurry M.insert) gs $ (sort rootPath, g0):nextgs
+            newStates = [(cost+nbrCost, pathsString')
+                        | i <- [0 .. (length paths - 1)]
+                        , let (paths0, (x: xs): paths2) = splitAt i paths -- expand from x
+                        , (nbr, nbrCost) <- M.toList $ g'!x
+                        , isLower nbr
+                        , let pathsString' = unwords $ paths0 ++ (nbr:x:xs): paths2
+                        ]
+
+            heap'' = foldr S.insert heap' newStates
+
+            -- searchState = pathHeads ++ sort rootPath
+            -- gs' = foldl addGraph gs additionalStates
+            --   where additionalStates = searchState
+            --                            : [g:rootPath
+            --                              | h <- pathHeads
+            --                              , g <- [h, toUpper h]]
+            --         addGraph :: Map [Char] MazeGraph -> [Char] -> Map [Char] MazeGraph
+            --         -- 'addGraph graphDict path' returns a graph
+            --         -- dictionary that contains a graph with the path
+            --         -- removed. If the path is not capitalized, then
+            --         -- addGraph also ensures that the capitalized path
+            --         -- has also been removed. This allows ready access
+            --         -- to both a graph with all keys and doors are
+            --         -- removed (uncapitalized path) and a graph where
+            --         -- only the doors have been removed (capitalized
+            --         -- path.) We want the first graph for search
+            --         -- efficiency, so that we don't revisit keys. We
+            --         -- want the graph with just the doors removed
+            --         -- so that we can find the newly accessible
+            --         -- neighbors once we have a key.
+            --         addGraph gs path
+            --           | spath `M.member` gs = gs
+            --           | isLowered path 
+            --           = --trace "found a key: insert key into graph with corresponding door removed" $
+            --             --trace ("adding "++spath) $
+            --             insert spath (openDoor cg (head path)) cgs
+            --           | stpath `M.member` gs
+            --           = --trace "insert into graph with tail removed" $
+            --             --trace ("adding "++spath) $
+            --             insert spath (openDoor tg (head path)) tgs
+            --           | otherwise
+            --           = --trace ("addGraph "++path++", recursing on "++tpath) $
+            --             addGraph (addGraph gs tpath) path --recurse
+            --           where spath = sort path
+            --                 cpath = capitalize path
+            --                 scpath = sort $ cpath
+            --                 cg = cgs!scpath
+            --                 cgs | not $ scpath `M.member` gs = addGraph gs cpath
+            --                     | otherwise = gs
+            --                 tpath = tail path
+            --                 stpath = sort tpath
+            --                 tg = tgs!stpath
+            --                 tgs | not $ stpath `M.member` gs = addGraph gs tpath
+            --                     | otherwise = gs
+            -- seen' = searchState `S.insert` seen 
+            -- heap'' = foldr S.insert heap' $ traceShowId $ 
+            --   [(cost+ncost, unwords $ paths0 ++ [n:x:xs] ++ paths2)
+            --   | i <- [0 .. (length paths - 1)] -- pick a path to expand
+            --   , let (paths0, (x: xs): paths2) = splitAt i paths -- x is the door to open
+            --   , let k = trace "\nk" $ traceShowId $
+            --           sort $ rootPath ++ (if isLower x then [toUpper x] else "")
+            --   , k `M.member` gs' || (error $ k ++ " not in " ++ (show $M.keys gs')++". pathsString="++pathsString)
+            --   , x `M.member` (gs'!k) || (error $ show x ++ " not in " ++ show (M.keys $ gs'!k))
+            --   , (n, ncost) <- toList $ traceShow ("gs'!k", gs'!k, "gs'k!x: ") $ traceShowId $ gs'!k!x
+            --   , isLower n
+            --   ]
+
 
 
 main = do
   -- [instructionFile] <- getArgs
-  --mazeString <- readFile "18.input.txt" -- instructionFile
-  -- mazeString <- readFile "18.2.input.txt" -- instructionFile
-  -- mazeString <- readFile "18.test4" -- instructionFile
-  --let maze = strToMaze mazeString
-  --let mazeGraph = mazeToGraph maze
-  -- print $ mazeToGraph' maze
-  --print mazeGraph
-  -- let positions = mazeToPositions maze
-  --print ("maze size", M.size maze, "graph size", M.size mazeGraph) -- reduced from 3201 nodes to 53 nodes
-  --print $ sort $ M.keys mazeGraph 
-
   -- putStrLn "Part 1"
-
-  -- print $ findShortestPath mazeGraph $ S.singleton (0, ['@'])
+  -- mazeString <- readFile "18.input.txt" -- instructionFile
+  -- -- mazeString <- readFile "18.2.input.txt" -- instructionFile
+  -- -- mazeString <- readFile "18.test4" -- instructionFile
+  -- let maze = strToMaze mazeString
+  -- let mazeGraph = mazeToGraph maze
+  -- -- print $ mazeToGraph' maze
+  -- -- print mazeGraph
+  -- let positions = mazeToPositions maze
+  -- print ("maze size", M.size maze, "graph size", M.size mazeGraph) -- reduced from 3201 nodes to 53 nodes
+  -- print $ sort $ M.keys mazeGraph 
+  -- print $ findShortestPath isDone mazeGraph $ S.singleton (0, ['@'])
 
   putStrLn "Part 2"
-  mazeGraph2 <- readFile "18.2.test1" >>= (return . mazeToGraph . strToMaze)
-  --mazeGraph2 <- readFile "18.2.input.txt" >>= (return . mazeToGraph . strToMaze)
-  print mazeGraph2
-  print $ findShortestPath mazeGraph2 $ S.singleton (0,["1","2","3","4"])
+  let file2 = "18.2.input.txt"
+  -- let file2 = "18.2.test1"
+  -- mazeGraph2 <- readFile "18.2.test1" >>= (return . mazeToGraph . strToMaze)
+  mazeGraph2 <- readFile file2 >>= (return . mazeToGraph . strToMaze)
+  let allKeys = Prelude.filter isLower $ M.keys mazeGraph2
+  let isDone state = all (`elem` state') allKeys
+        where state' = Prelude.filter isLower state
+        
+  -- print mazeGraph2
+  print $ findShortestPath isDone mazeGraph2 $ S.singleton (0, "1 2 3 4")
