@@ -71,51 +71,115 @@ strToF s | n == 4 && ws!!3 == "stack" = newStack
 -- cut' a x = x+a. Finally increment is a multiply, to get back the
 -- original deck, multiply by the inverse. increment' a x = x * inv a.
 
-shuffle' :: Integer -> String -> 
+-- But, given the large deck size and the large number of shuffles, we
+-- have to further analyze. The critical insight is to see that each
+-- shuffle is just a linear transformation of the form ax +
+-- b. newStack, or reverse, is just -x. Cut b is -b. And increment a
+-- is just ax. Notice also that applying multiple linear
+-- transformations gives another linear transformation. If f = ax+b
+-- and g = a'x+b', then f.g = a(a'x+b')+b = aa'x+(ab'+b). This
+-- suggests that we can shuffle merely be keeping track of the a pair,
+-- (a,b). The to do multiple shuffles, we can just multiply a
+-- transformation by itself repeatedly.
 
-newStack' deckSize card = deckSize - 1 - card
+type Shuffle = (Integer, Integer) -- (a,b) => ax+b 
+compose :: Integer -> Shuffle -> Shuffle -> Shuffle
+compose m (a,b) (c,d) = ((a*c) `mod` m, (a*d+b) `mod` m)
 
-cut' deckSize x card | x < 0 = cut' deckSize (deckSize + x) card
-                     | card >= x = card - x
-                     | otherwise = deckSize + card - x
-
-increment' deckSize x card = (card * x) `mod` deckSize
-
-inverse' :: String -> Integer -> Integer -> Integer
-inverse' instructions deckSize card0 = foldl inverse1 card0 $ reverse $ lines instructions
-  where inverse1 :: Integer -> String -> Integer
-        inverse1 card s
+shuffle :: String -> Integer -> Shuffle -> Shuffle
+shuffle instructions deckSize (a,b) = foldl shuffle1 (a,b) $ lines instructions
+  where shuffle1 :: Shuffle -> String -> Shuffle
+        shuffle1 (a,b) s
           | n == 4 && ws!!3 == "stack"  -- newStack (reverse)
-          =  newStack' deckSize card
+          = -- trace "newStack" $ traceShowId $
+            compose deckSize (-1, -1) (a,b)  
           | n == 2   -- cut (read $ ws!!1)
-          = cut' deckSize (deckSize - (read $ ws !! 1)) card
+          = -- trace "cut" $ traceShowId $
+            compose deckSize (1, -1 * arg) (a,b) 
           | otherwise  -- increment (read $ ws!!3)
-          = newStack' deckSize $ increment' deckSize (read $ ws !! 3) $ newStack' deckSize card
+          = -- trace "increment" $ traceShowId $
+            compose deckSize (arg, 0) (a,b) 
           where ws = words s
                 n = length ws
+                arg = read $ ws !! (n-1)
+
+shuffles :: Integer -> Integer -> Shuffle -> Shuffle
+shuffles deckSize n (a,b)
+  | n == 0 = -- trace "shuffles base case" $ traceShowId $
+    (1,0)
+  | r == 1 = -- trace "shuffles odd" $ traceShowId $
+    compose deckSize (a,b) shuffles'
+  | otherwise = -- trace "shuffles even" $ traceShowId $
+    shuffles'
+  where (q,r) = divMod n 2
+        shuffles' = shuffles deckSize q $ compose deckSize (a,b) (a,b)
+
+-- Once we have the complete shuffle (a,b), we need to invert it.
+-- finalPosition = a*initialPosition+b, given final position,
+-- find initial position.
+-- initialPosition = (finalPosition - b) * inv a
+
+-- Extended euclidian algorithm
+-- given integers a and b, find s and t such that sa + tb = gcd(a,b)
+eea :: (Show a, Integral a) => a -> a -> (a, a, a)
+eea a b | r == 0 =
+          (0,1,b)
+        | (s,t) == (0,1) = 
+          (t, s-q, d)
+        | otherwise = 
+          (t, (s- q*t), d)
+  where (q,r) = divMod a b
+        (s,t,d) = eea b r
+
+modularMultaplicativeInverse a m = s
+  where (s, t, d) = eea a m
+
+invert :: Integer -> Shuffle -> Integer -> Integer
+invert deckSize (a,b) finalPosition
+  = ((finalPosition - b) * modularMultaplicativeInverse a deckSize) `mod` deckSize
+  
+-- newstack' deckSize card = deckSize - 1 - card
+
+-- cut' deckSize x card | x < 0 = cut' deckSize (deckSize + x) card
+--                      | card >= x = card - x
+--                      | otherwise = deckSize + card - x
+
+
+-- increment' deckSize x card = (card * modularMultaplicativeInverse x deckSize) `mod` deckSize
+
+-- inverse' :: String -> Integer -> Integer -> Integer
+-- inverse' instructions deckSize card0 = foldl inverse1 card0 $ reverse $ lines instructions
+--   where inverse1 :: Integer -> String -> Integer
+--         inverse1 card s
+--           | n == 4 && ws!!3 == "stack"  -- newStack (reverse)
+--           =  newStack' deckSize card
+--           | n == 2   -- cut (read $ ws!!1)
+--           = cut' deckSize (deckSize - (read $ ws !! 1)) card
+--           | otherwise  -- increment (read $ ws!!3)
+--           = increment' deckSize (read $ ws !! 3) card
+--           where ws = words s
+--                 n = length ws
   
 main = do
-  putStrLn "Test"
-  let xs :: [Int]
-      xs = [0 .. 9]
-  print $ ("newStack", newStack xs)
-  print $ ("cut 3", cut 3 xs)
-  print $ ("cut -4", cut (-4) xs)
-  print $ ("increment 3", increment 3 xs)
+  -- putStrLn "Test"
+  -- let xs :: [Int]
+  --     xs = [0 .. 9]
+  -- print $ ("newStack", newStack xs)
+  -- print $ ("cut 3", cut 3 xs)
+  -- print $ ("cut -4", cut (-4) xs)
+  -- print $ ("increment 3", increment 3 xs)
 
-  putStrLn "Part 1"
   instructionString <- readFile "22.input.txt"
-  let cards = foldl (\cs f -> f cs) cards0 $ map strToF $ lines instructionString
-  print $ length cards
-  print $ 2019 `elemIndex` cards
+  -- putStrLn "Part 1"
+  -- let cards = foldl (\cs f -> f cs) cards0 $ map strToF $ lines instructionString
+  -- print $ length cards
+  -- print $ 2019 `elemIndex` cards
 
   putStrLn "Part 2"
   let deckSize = 119315717514047
-      shuffles = 101741582076661
-      shuffle = inverse' instructionString deckSize 
-  -- let values = take 3 $ zip [0 ..] $ iterate shuffle 2020
-  let b = shuffle 0
-      a = shuffle 1 - b
-      shuffle
-  let values = take 3 $ map shuffle [0 ..]
-  print $ values
+      nShuffles = 101741582076661
+      (a,b) = trace "many shuffles" $ traceShowId $
+              shuffles deckSize nShuffles $
+              trace "one shuffle" $ traceShowId $
+              shuffle instructionString deckSize (1,0)
+  print $ invert deckSize (a,b) 2020
