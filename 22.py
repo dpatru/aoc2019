@@ -1,6 +1,7 @@
 from __future__ import division, print_function
 import fileinput
 
+# This solution from reddit: https://www.reddit.com/r/adventofcode/comments/ee0rqi/2019_day_22_solutions/fbwpk5k?utm_source=share&utm_medium=web2x
 n = 119315717514047
 c = 2020
 
