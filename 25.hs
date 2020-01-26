@@ -10,7 +10,7 @@ import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
 --import qualified Data.Array as A
-import Data.List (find, intercalate, intersperse, permutations, inits, tails, isPrefixOf)
+import Data.List (find, intercalate, intersperse, permutations, inits, tails, isPrefixOf, isInfixOf)
 import Data.List.Split (splitOn)
 -- import Data.Complex (Complex((:+)), realPart, imagPart) -- define my own complex
 
@@ -19,7 +19,7 @@ import Text.Regex.PCRE
 import UI.NCurses
 import Data.Char (chr, ord)
 -- import Data.Complex (Complex((:+)))
-import Data.Maybe (fromJust, isNothing)
+import Data.Maybe (fromJust, isNothing, isJust)
 type Instructions = Map Integer Integer
 
 data ComputerState = Ready | Running | Blocked | Done
@@ -122,12 +122,16 @@ interactc g explorePath c = do
   let out = toAscii $ output c
       linesOut = lines out
       room = map stripRoomName $ filter (isPrefixOf "==") $ linesOut
+      droidWeight
+        | "Droids on this ship are heavier" `isInfixOf` out = "too light"
+        | "Droids on this ship are lighter" `isInfixOf` out = "too heavy"
+        | otherwise = "not applicable"
       -- if booted out, then last room listed is current room
       -- room = map (head . tail) $ (out =~ "== (.+?) ==" :: [[String]]) -- init $ tail $ head linesOut
       prompt = not $ null $ filter (== "Command?") linesOut
       stuff = map (drop 2) $ filter (isPrefixOf "- ") linesOut
       doors = filter (`elem` ["north","south","east","west"]) stuff
-      items = filter (not . (`elem` doors)) stuff
+      items = filter (not . (`elem` ["infinite loop", "molten lava", "escape pod", "photons", "giant electromagnet"])) $ filter (not . (`elem` doors)) stuff
       newFrontier = not $ (null room || head room `M.member` g)
       (previousDoor, previousRoom) = head explorePath -- laziness ensures that explorePath is not null
       g' | newFrontier = M.insert (head room) (M.fromList [(door, Nothing)| door <- doors]) g
@@ -136,22 +140,74 @@ interactc g explorePath c = do
          | otherwise = M.adjust (\m -> M.insert (back $ previousDoor) (Just previousRoom) m) (head room) $
                        M.adjust (\m -> M.insert previousDoor (Just $ head room) m) previousRoom g
       (move, explorePath')
+        | null room = ("to checkpoint", explorePath)
+        | head room == "Security Checkpoint" = (back previousDoor, tail explorePath)
         | newFrontier = (head doors, (head doors, head room): explorePath)
-        | null unexplored && null explorePath = error "explored all"
+        | null unexplored && null explorePath = ("inv", []) -- error "explored all"
         | null unexplored || head unexplored == previousRoom = (back previousDoor, tail explorePath)
         | otherwise = (head unexplored, (head unexplored, head room) : explorePath)
         where unexplored :: [Direction]
               unexplored = M.keys $ M.filter isNothing $ g!(head room)
   putStrLn out
-  putStrLn $ "room: "++ show room ++"\nprompt: "++ show prompt++"\ndoors: "++ show doors++"\nitems: "++show items
-  if prompt then do
+  putStrLn $ "room: " ++ show room ++ "\nprompt: " ++ show prompt ++ "\ndoors: " ++ show doors ++ "\nitems: " ++ show items ++ "\nmove: " ++ show move ++ "\nexplorePath': " ++ show explorePath
+  if not prompt then return ()
+  else if move == "to checkpoint" then do
+    putStrLn "Move to checkpoint"
+    let pathToCheckpoint = traceShowId $ toCheckpoint g'
+        c' = run $ c{output=[], input=concatMap ((\s -> s ++ [10]) . fromAscii) pathToCheckpoint}
+    putStrLn $ toAscii $ output c'
+
+
+    -- print $ g'
     -- s <- getLine
-    -- interactc g $ run $ c{output=[], input=fromAscii s ++ [10]}
-    putStrLn move
-    putStrLn $  "(explorePath = "++show explorePath++")"
-    interactc g' explorePath' $ run $ c{output=[], input=fromAscii move ++ [10]}
-  else return ()
+    -- interactc g' explorePath' $ run $ c{output=[], input=fromAscii s ++ [10]}
+      
+  else do
+      if not (null items) then do
+        putStrLn "Picking up items"
+        let move' = "take " ++ head items
+            c' = run $ c{output=[], input=fromAscii move' ++ [10]}
+        putStrLn move'
+        putStrLn $ toAscii $ output c'
+        putStrLn move
+        putStrLn $  "(explorePath = "++show explorePath++")"
+        interactc g' explorePath' $ run $ c'{output=[], input=fromAscii move ++ [10]}
+      else do
+        putStrLn move
+        putStrLn $  "(explorePath = "++show explorePath++")"
+        interactc g' explorePath' $ run $ c{output=[], input=fromAscii move ++ [10]}
+
+toCheckpoint g = search g "Security Checkpoint" $ [["Hull Breach"]]
+  where search g goal paths
+          | null paths = error "null paths"
+          | room == goal = filter (`elem` ["north", "south", "east", "west"]) $ trace "path" $ traceShowId $ reverse path
+          | null frontier = search g goal $ tail paths
+          | otherwise = search g goal $ [room:door:path | (door, room) <- frontier] ++ tail paths
+          where path = head paths
+                room = head path
+                frontier :: [(Direction, String)]
+                frontier = M.toList $ M.filter (not . (`elem` path)) $ M.map fromJust $ M.filter isJust $ g!room
   
+-- ("Arcade",fromList [("north",Just "Navigation"),("west",Just "Kitchen")]),
+-- ("Corridor",fromList [("north",Just "Holodeck"),("west",Just "Gift Wrapping Center")]),
+-- ("Crew Quarters",fromList [("north",Just "Engineering")]),
+-- ("Engineering",fromList [("east",Just "Hull Breach"),("south",Just "Crew Quarters"),("west",Just "Hallway")]),
+-- ("Gift Wrapping Center",fromList [("east",Just "Corridor"),("north",Just "Observatory"),("south",Just "Hull Breach")]),
+-- ("Hallway",fromList [("east",Just "Engineering"),("north",Just "Science Lab"),("south",Just "Sick Bay")]),
+-- ("Holodeck",fromList [("south",Just "Corridor")]),
+-- ("Hot Chocolate Fountain",fromList [("east",Just "Storage")]),
+-- ("Hull Breach",fromList [("east",Just "Kitchen"),("north",Just "Gift Wrapping Center"),("west",Just "Engineering")]),
+-- ("Kitchen",fromList [("east",Just "Arcade"),("west",Just "Hull Breach")]),
+-- ("Navigation",fromList [("south",Just "Arcade"),("west",Just "Storage")]),
+-- ("Observatory",fromList [("north",Just "Passages"),("south",Just "Gift Wrapping Center")]),
+-- ("Passages",fromList [("south",Just "Observatory")]),
+-- ("Science Lab",fromList [("east",Just "Security Checkpoint"),("south",Just "Hallway")]),
+-- ("Security Checkpoint",fromList [("east",Nothing),("west",Just "Science Lab")]),
+-- ("Sick Bay",fromList [("east",Just "Warp Drive Maintenance"),("north",Just "Hallway")]),
+-- ("Stables",fromList [("south",Just "Warp Drive Maintenance")]),
+-- ("Storage",fromList [("east",Just "Navigation"),("west",Just "Hot Chocolate Fountain")]),
+-- ("Warp Drive Maintenance",fromList [("north",Just "Stables"),("west",Just "Sick Bay")])]
+
 
 main = do
   print $ toAscii $ fromAscii "This is a test"
