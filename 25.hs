@@ -160,14 +160,14 @@ interactc g explorePath c = do
         items = map (drop 2) $ filter ("- " `isPrefixOf`) $ lines $ toAscii $ output c''
         c''' = run $ c''{output=[], input=concatMap fromAscii $ ["drop "++i++"\n" | i <- items]++["inv\n"]}
         testComputer = c'''{output=[]}
-        testWeight items' | "heavier" `isInfixOf` out = True
-                          | "lighter" `isInfixOf` out = False
+        testWeight items' | "heavier" `isInfixOf` out = True -- the items are ok, can add more
+                          | "lighter" `isInfixOf` out = False -- too many items already
                           | otherwise = error $ "found it!\n" ++ out ++ show items'
-          where out = traceShowId $ toAscii $ output $ run $
-                      testComputer{input=concatMap fromAscii $ ["take "++i++"\n"|i<-S.toList items']++["east\n"]}
+          where out = toAscii $ output $ run $
+                      testComputer{input=concatMap fromAscii $ ["take "++i++"\n"|i<-traceShowId $ S.toList items']++["east\n"]}
     putStrLn $ toAscii $ output c'''
     putStrLn "testing ..."
-    print $ searchPowerSet testWeight S.empty [(S.empty, items)]
+    print $ searchPowerSet 0 testWeight S.empty [(S.empty, items)]
 
 
     -- let c'' = passCheckpoint (head $ M.keys $ M.filter isNothing $ g!"Security Checkpoint") $
@@ -218,17 +218,20 @@ toCheckpoint g = search g "Security Checkpoint" $ [["Hull Breach"]]
                 frontier = M.toList $ M.filter (not . (`elem` path)) $ M.map fromJust $ M.filter isJust $ g!room
 
 
-searchPowerSet:: (Set String -> Bool) -> Set (Set String) -> [(Set String, [String])] -> Set String
-searchPowerSet test tooBig ((yes,unknown): candidates)
-  | test yes
-  = searchPowerSet test tooBig $
-    [(yes', u `delete` unknown)
-    | u <- unknown
+searchPowerSet:: Int -> (Set String -> Bool) -> Set (Set String) -> [(Set String, [String])] -> Set String
+searchPowerSet i test tooBig ((yes,unknown): candidates)
+  
+  | (S.null $ S.filter (`S.isSubsetOf` yes) tooBig) && test yes
+  = trace (show i++ ": keep going: "++show (S.toList yes)) $
+    searchPowerSet (i+1) test tooBig $
+    [(yes', unknown')
+    | (u:unknown')<- init $ tails unknown
     , let yes' = S.insert u yes
-    , null $ S.filter (`S.isSubsetOf` yes') tooBig
+    , S.null $ S.filter (`S.isSubsetOf` yes') tooBig
     ] ++candidates
   | otherwise
-  = searchPowerSet test (S.insert yes tooBig) candidates
+  = trace (show i++": skip this: "++show (S.toList yes)++"\nsets rejected: "++show (S.size tooBig + 1)) $
+    searchPowerSet (i+1) test (S.insert yes tooBig) candidates
 
 -- -- We're looking for a set of the right weight. Put the items in some
 -- -- standard order and represent the set as a boolean list bs, whose
