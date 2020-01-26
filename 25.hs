@@ -10,7 +10,7 @@ import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
 --import qualified Data.Array as A
-import Data.List (find, intercalate, intersperse, permutations, inits, tails, isPrefixOf, isInfixOf)
+import Data.List (find, intercalate, intersperse, permutations, inits, tails, isPrefixOf, isInfixOf, delete)
 import Data.List.Split (splitOn)
 -- import Data.Complex (Complex((:+)), realPart, imagPart) -- define my own complex
 
@@ -156,6 +156,22 @@ interactc g explorePath c = do
     let pathToCheckpoint = traceShowId $ toCheckpoint g'
         c' = run $ c{output=[], input=concatMap ((\s -> s ++ [10]) . fromAscii) pathToCheckpoint}
     putStrLn $ toAscii $ output c'
+    let c'' = run $ c'{output=[], input=fromAscii "inv\n"}
+        items = map (drop 2) $ filter ("- " `isPrefixOf`) $ lines $ toAscii $ output c''
+        c''' = run $ c''{output=[], input=concatMap fromAscii $ ["drop "++i++"\n" | i <- items]++["inv\n"]}
+        testComputer = c'''{output=[]}
+        testWeight items' | "heavier" `isInfixOf` out = True
+                          | "lighter" `isInfixOf` out = False
+                          | otherwise = error $ "found it!\n" ++ out ++ show items'
+          where out = traceShowId $ toAscii $ output $ run $
+                      testComputer{input=concatMap fromAscii $ ["take "++i++"\n"|i<-S.toList items']++["east\n"]}
+    putStrLn $ toAscii $ output c'''
+    putStrLn "testing ..."
+    print $ searchPowerSet testWeight S.empty [(S.empty, items)]
+
+
+    -- let c'' = passCheckpoint (head $ M.keys $ M.filter isNothing $ g!"Security Checkpoint") $
+    --           c'{output = []}
 
 
     -- print $ g'
@@ -178,16 +194,60 @@ interactc g explorePath c = do
         interactc g' explorePath' $ run $ c{output=[], input=fromAscii move ++ [10]}
 
 toCheckpoint g = search g "Security Checkpoint" $ [["Hull Breach"]]
+  -- search the graph g depth-first, with the longest, current path at
+  -- the head of the list of paths.
   where search g goal paths
           | null paths = error "null paths"
-          | room == goal = filter (`elem` ["north", "south", "east", "west"]) $ trace "path" $ traceShowId $ reverse path
-          | null frontier = search g goal $ tail paths
-          | otherwise = search g goal $ [room:door:path | (door, room) <- frontier] ++ tail paths
+          | room == goal -- done, return path after removing rooms and reversing the order.
+          = filter (`elem` ["north", "south", "east", "west"]) $ trace "path" $ traceShowId $ reverse path
+          | null frontier -- if there is no frontier, ie, nothing
+                          -- further to explore in the current path,
+                          -- discard it and search the rest of the
+                          -- paths.
+          = search g goal $ tail paths
+          | otherwise -- If there is a frontier, create new paths to
+                      -- explore, add them to the front of the list,
+                      -- and keep searching.
+          = search g goal $ [room:door:path | (door, room) <- frontier] ++ tail paths
           where path = head paths
                 room = head path
                 frontier :: [(Direction, String)]
+                -- the frontier is the doors leading to rooms from the
+                -- current room, that also don't go back to rooms
+                -- we've already explored in this path.
                 frontier = M.toList $ M.filter (not . (`elem` path)) $ M.map fromJust $ M.filter isJust $ g!room
-  
+
+
+searchPowerSet:: (Set String -> Bool) -> Set (Set String) -> [(Set String, [String])] -> Set String
+searchPowerSet test tooBig ((yes,unknown): candidates)
+  | test yes
+  = searchPowerSet test tooBig $
+    [(yes', u `delete` unknown)
+    | u <- unknown
+    , let yes' = S.insert u yes
+    , null $ S.filter (`S.isSubsetOf` yes') tooBig
+    ] ++candidates
+  | otherwise
+  = searchPowerSet test (S.insert yes tooBig) candidates
+
+-- -- We're looking for a set of the right weight. Put the items in some
+-- -- standard order and represent the set as a boolean list bs, whose
+-- -- head is the last one included, i.e,
+-- --      set = [i | (i, b) <- zip items $ reverse bs, b].
+-- nextSet:: Int -> [Bool] -> ([Bool],[Bool]) -- (next smaller, next greater)
+-- nextSet n bs
+--   | n == length bs
+--   = let bs' = True: False: drop 1 $ dropWhile (== False) $ dropWhile (== True) bs
+--     in (bs', bs')
+--   | otherwise
+--   = ( True: False: drop 1 $ dropWhile (== False) $ drop 1 bs,
+--       if length bs < n then True: bs else
+--         True: False: drop 1 $ dropWhile (== False) $ dropWhile (== True) bs)
+-- (error "True: bs, 
+-- hiloPowersetTester n = tester [Truen
+--   where tester 
+
+
 -- ("Arcade",fromList [("north",Just "Navigation"),("west",Just "Kitchen")]),
 -- ("Corridor",fromList [("north",Just "Holodeck"),("west",Just "Gift Wrapping Center")]),
 -- ("Crew Quarters",fromList [("north",Just "Engineering")]),
